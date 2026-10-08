@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "PingFang SC", "Noto Sans SC", "Segoe UI", system-ui, sans-serif;
+  --color-paper: #f6f1e8;
+  --color-card: #fffdf8;
+  --color-ink: #2c261e;
+  --color-muted: #8a8074;
+  --color-line: #e4dcd0;
+  --color-sage: #5b7c6a;
+  --color-clay: #c4783a;
+  --color-soft: #efe6d8;
+}
+
+[data-scene='paper'] {
+  --color-paper: #f6f1e8;
+  --color-card: #fffdf8;
+  --color-ink: #2c261e;
+  --color-muted: #8a8074;
+  --color-line: #e4dcd0;
+  --color-sage: #5b7c6a;
+  --color-clay: #c4783a;
+  --color-soft: #efe6d8;
+}
+
+[data-scene='dusk'] {
+  --color-paper: #1c1410;
+  --color-card: #2a211b;
+  --color-ink: #f4ebe1;
+  --color-muted: #b5a394;
+  --color-line: #3d322a;
+  --color-sage: #c4783a;
+  --color-clay: #e0a36a;
+  --color-soft: #322820;
+}
+
+[data-scene='forest'] {
+  --color-paper: #121a16;
+  --color-card: #1b2721;
+  --color-ink: #e8f0ea;
+  --color-muted: #9bb0a3;
+  --color-line: #2c3b33;
+  --color-sage: #6f9b7d;
+  --color-clay: #d4a574;
+  --color-soft: #22332a;
+}
+
+[data-scene='night'] {
+  --color-paper: #0c1018;
+  --color-card: #161c28;
+  --color-ink: #e8edf7;
+  --color-muted: #8b97ad;
+  --color-line: #2a3344;
+  --color-sage: #7aa2ff;
+  --color-clay: #c9a27a;
+  --color-soft: #1c2433;
+}
+
+[data-scene='sand'] {
+  --color-paper: #e8d5b5;
+  --color-card: #f3e6cc;
+  --color-ink: #3a2c1c;
+  --color-muted: #8a7358;
+  --color-line: #d4c09a;
+  --color-sage: #8a6a3b;
+  --color-clay: #c4783a;
+  --color-soft: #ddc9a4;
+}
+
+html,
+body,
+#root {
+  min-height: 100dvh;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: #1a1612;
+  color: var(--color-ink);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+textarea,
+input {
+  color: inherit;
+}
+
+::placeholder {
+  color: var(--color-muted);
+  opacity: 0.85;
+}

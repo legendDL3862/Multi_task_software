@@ -1,0 +1,91 @@
+export type Lane = 'lot' | 'primary' | 'secondary' | 'archive'
+export type NoiseType = 'off' | 'white' | 'pink' | 'brown'
+export type Scene = 'dusk' | 'paper' | 'forest' | 'night' | 'sand'
+export type Locale = 'zh' | 'en'
+export type TimerMode = 'countup' | 'countdown'
+export type Slot = 'primary' | 'secondary' | 'other'
+
+export type Folder = {
+  id: string
+  name: string
+  parentId: string | null
+  createdAt: number
+}
+
+export type Item = {
+  id: string
+  title: string
+  content: string
+  tags: string[]
+  lane: Lane
+  folderId: string | null
+  sortOrder: number
+  reflux: boolean
+  buried: boolean
+  totalSeconds: number
+  sessionCount: number
+  createdAt: number
+  updatedAt: number
+  completedAt: number | null
+}
+
+export type Session = {
+  id: string
+  itemId: string
+  slot: Slot
+  dateKey: string
+  mode: TimerMode
+  plannedSeconds: number
+  elapsedSeconds: number
+  startedAt: number
+  endedAt: number | null
+  captures: string[]
+}
+
+export type Note = {
+  id: string
+  body: string
+  linkedItemId: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export type DailyLog = {
+  date: string
+  content: string
+  updatedAt: number
+}
+
+export type Settings = {
+  id: 'settings'
+  noiseType: NoiseType
+  noiseVolume: number
+  defaultMinutes: number
+  locale: Locale
+  scene: Scene
+  timerMode: TimerMode
+  primaryMinMinutes: number
+  secondaryMinMinutes: number
+}
+
+export type BackupPayload = {
+  version: 1 | 2
+  exportedAt: number
+  folders: Folder[]
+  items: Item[]
+  sessions: Session[]
+  notes: Note[]
+  dailyLogs: DailyLog[]
+  settings: Settings
+}
+
+export type TimerState = {
+  itemId: string
+  sessionId: string
+  slot: Slot
+  mode: TimerMode
+  plannedSeconds: number
+  elapsedSeconds: number
+  remainingSeconds: number
+  running: boolean
+} | null
