@@ -3,13 +3,22 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron/main.mjs",
   "scripts": {
     "dev": "vite",
+    "dev:lan": "vite --host",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "preview:lan": "vite preview --host --port 4173",
+    "mobile:sync": "npm run build && npx cap sync android",
+    "mobile:open": "npx cap open android",
+    "desktop": "npm run build && electron .",
+    "desktop:exe": "npm run build && electron-builder --win portable"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
     "dexie": "^4.4.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -18,11 +27,14 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
     "oxlint": "^1.81.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",

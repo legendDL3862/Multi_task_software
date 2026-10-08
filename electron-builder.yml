@@ -1,0 +1,11 @@
+appId: app.dualslot.desktop
+productName: 双槽
+directories:
+  output: release
+files:
+  - dist/**/*
+  - electron/**/*
+win:
+  target:
+    - portable
+artifactName: "${productName}-${version}-portable.${ext}"
