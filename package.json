@@ -2,6 +2,8 @@
   "name": "multi-task-software",
   "private": true,
   "version": "0.0.0",
+  "description": "Dual Slot — focus slots and a parking lot for generalists",
+  "author": "Dual Slot",
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
@@ -14,7 +16,7 @@
     "mobile:sync": "npm run build && npx cap sync android",
     "mobile:open": "npx cap open android",
     "desktop": "npm run build && electron .",
-    "desktop:exe": "npm run build && electron-builder --win portable"
+    "desktop:exe": "npm run build && node scripts/pack-desktop.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

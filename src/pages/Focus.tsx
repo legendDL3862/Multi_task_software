@@ -79,7 +79,7 @@ export function FocusPage() {
     task?.lane === 'primary' ? t.primary : task?.lane === 'secondary' ? t.secondary : t.otherTasks
 
   return (
-    <div className="flex min-h-[70dvh] flex-col">
+    <div className="flex flex-col">
       <div className="flex items-center justify-between gap-2">
         <select
           className="max-w-[72%] rounded-full border border-line bg-card px-3 py-1.5 text-sm"
@@ -134,7 +134,8 @@ export function FocusPage() {
           value={clockValue}
           planned={active?.plannedSeconds || minutes * 60}
           mode={settings.timerMode}
-          label={task ? `${roleLabel} · ${task.title}` : t.noTask}
+          caption={task ? roleLabel : undefined}
+          title={task ? task.title : t.noTask}
         />
       </div>
 

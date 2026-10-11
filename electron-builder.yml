@@ -8,4 +8,5 @@ files:
 win:
   target:
     - portable
+  signAndEditExecutable: false
 artifactName: "${productName}-${version}-portable.${ext}"

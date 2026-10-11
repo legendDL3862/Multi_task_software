@@ -44,7 +44,7 @@ npm run desktop
 npm run desktop:exe
 ```
 
-产物在 `release/` 目录，类似 `双槽-0.0.0-portable.exe`。拷到任意文件夹双击即可，不必再开 `npm`。数据存在系统用户目录下 Electron 对应的缓存里，和浏览器不是同一份。
+产物在用户目录 `DualSlotBuild`（例如 `C:\Users\legen\DualSlotBuild\双槽-0.0.0-portable.exe`），不放在项目文件夹里，避免 Windows 占用导致打包失败。拷到任意位置双击即可。数据和浏览器不是同一份。
 
 
 ## 做成手机应用（Android APK）
