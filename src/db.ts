@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { uid } from './lib/id'
-import type { DailyLog, Folder, Item, Note, Session, Settings } from './types'
+import type { DailyLog, Folder, Habit, Item, Note, Session, Settings } from './types'
 
 export class DualSlotDB extends Dexie {
   folders!: EntityTable<Folder, 'id'>
@@ -9,6 +9,7 @@ export class DualSlotDB extends Dexie {
   notes!: EntityTable<Note, 'id'>
   dailyLogs!: EntityTable<DailyLog, 'date'>
   settings!: EntityTable<Settings, 'id'>
+  habits!: EntityTable<Habit, 'id'>
 
   constructor() {
     super('dual-slot')
@@ -27,6 +28,15 @@ export class DualSlotDB extends Dexie {
       notes: 'id, linkedItemId, updatedAt',
       dailyLogs: 'date',
       settings: 'id',
+    })
+    this.version(3).stores({
+      folders: 'id, parentId, createdAt',
+      items: 'id, lane, folderId, sortOrder, createdAt, updatedAt, completedAt, buried',
+      sessions: 'id, itemId, startedAt, dateKey, slot',
+      notes: 'id, linkedItemId, updatedAt',
+      dailyLogs: 'date',
+      settings: 'id',
+      habits: 'id, sortOrder, createdAt, archived',
     })
     this.on('populate', (trans) => {
       const now = Date.now()

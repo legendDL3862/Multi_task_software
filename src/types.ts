@@ -3,13 +3,29 @@ export type NoiseType = 'off' | 'white' | 'pink' | 'brown'
 export type Scene = 'dusk' | 'paper' | 'forest' | 'night' | 'sand'
 export type Locale = 'zh' | 'en'
 export type TimerMode = 'countup' | 'countdown'
-export type Slot = 'primary' | 'secondary' | 'other'
+export type Slot = 'primary' | 'secondary' | 'other' | 'habit'
+export type MusicSource = NoiseType | 'folder'
+export type AlarmType = 'off' | 'chime' | 'bell' | 'wood'
 
 export type Folder = {
   id: string
   name: string
   parentId: string | null
   createdAt: number
+}
+
+export type Habit = {
+  id: string
+  title: string
+  content: string
+  tags: string[]
+  dailyMinMinutes: number
+  sortOrder: number
+  archived: boolean
+  totalSeconds: number
+  sessionCount: number
+  createdAt: number
+  updatedAt: number
 }
 
 export type Item = {
@@ -58,7 +74,7 @@ export type DailyLog = {
 
 export type Settings = {
   id: 'settings'
-  noiseType: NoiseType
+  noiseType: MusicSource
   noiseVolume: number
   defaultMinutes: number
   locale: Locale
@@ -66,16 +82,21 @@ export type Settings = {
   timerMode: TimerMode
   primaryMinMinutes: number
   secondaryMinMinutes: number
+  musicFolderLabel: string
+  musicFolderPath: string
+  alarmType: AlarmType
+  alarmVolume: number
 }
 
 export type BackupPayload = {
-  version: 1 | 2
+  version: 1 | 2 | 3
   exportedAt: number
   folders: Folder[]
   items: Item[]
   sessions: Session[]
   notes: Note[]
   dailyLogs: DailyLog[]
+  habits?: Habit[]
   settings: Settings
 }
 
@@ -88,4 +109,9 @@ export type TimerState = {
   elapsedSeconds: number
   remainingSeconds: number
   running: boolean
+} | null
+
+export type CompletionState = {
+  itemId: string
+  title: string
 } | null

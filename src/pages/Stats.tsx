@@ -9,10 +9,11 @@ export function StatsPage() {
   const sessions = useAppStore((s) => s.sessions)
   const timer = useAppStore((s) => s.timer)
   const settings = useAppStore((s) => s.settings)
+  const habits = useAppStore((s) => s.habits)
   const now = new Date()
   const days = useMemo(
-    () => buildDayStats(sessionsWithLive(sessions, timer), settings),
-    [sessions, timer, settings],
+    () => buildDayStats(sessionsWithLive(sessions, timer), settings, habits),
+    [sessions, timer, settings, habits],
   )
   const today = days.get(todayKey())
   const recent = lastNDays(30)
@@ -41,6 +42,19 @@ export function StatsPage() {
         <p className="mt-1 text-sm">
           {t.otherTime}: {formatDuration(today?.other ?? 0, settings.locale)}
         </p>
+        {today?.habitRows.length ? (
+          <div className="mt-3 space-y-1 text-sm">
+            <p>
+              {t.habitTime}: {formatDuration(today.habit, settings.locale)} · {today.habitMet ? t.met : t.notMet}
+            </p>
+            {today.habitRows.map((row) => (
+              <p key={row.id} className="text-muted">
+                {row.title}: {formatDuration(row.seconds, settings.locale)} / {Math.round(row.minSeconds / 60)}
+                {t.minutes} · {row.met ? t.met : t.notMet}
+              </p>
+            ))}
+          </div>
+        ) : null}
         <p className="mt-3 text-sm">
           {t.requirement}: {today?.met ? t.met : t.notMet}
         </p>
@@ -67,7 +81,8 @@ export function StatsPage() {
         <p className="mt-1 text-sm text-muted">
           {t.primary} {formatDuration(monthSum.primary, settings.locale)} · {t.secondary}{' '}
           {formatDuration(monthSum.secondary, settings.locale)} · {t.otherTime}{' '}
-          {formatDuration(monthSum.other, settings.locale)} · {t.daysMet} {monthSum.metDays}
+          {formatDuration(monthSum.other, settings.locale)} · {t.habitTime}{' '}
+          {formatDuration(monthSum.habit, settings.locale)} · {t.daysMet} {monthSum.metDays}
         </p>
       </section>
 
@@ -77,7 +92,8 @@ export function StatsPage() {
         <p className="mt-1 text-sm text-muted">
           {t.primary} {formatDuration(yearSum.primary, settings.locale)} · {t.secondary}{' '}
           {formatDuration(yearSum.secondary, settings.locale)} · {t.otherTime}{' '}
-          {formatDuration(yearSum.other, settings.locale)} · {t.daysMet} {yearSum.metDays}
+          {formatDuration(yearSum.other, settings.locale)} · {t.habitTime}{' '}
+          {formatDuration(yearSum.habit, settings.locale)} · {t.daysMet} {yearSum.metDays}
         </p>
       </section>
     </div>

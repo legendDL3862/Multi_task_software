@@ -15,6 +15,7 @@
 }
 
 [data-scene='paper'] {
+  color-scheme: light;
   --color-paper: #f6f1e8;
   --color-card: #fffdf8;
   --color-ink: #2c261e;
@@ -26,6 +27,7 @@
 }
 
 [data-scene='dusk'] {
+  color-scheme: dark;
   --color-paper: #1c1410;
   --color-card: #2a211b;
   --color-ink: #f4ebe1;
@@ -37,6 +39,7 @@
 }
 
 [data-scene='forest'] {
+  color-scheme: dark;
   --color-paper: #121a16;
   --color-card: #1b2721;
   --color-ink: #e8f0ea;
@@ -48,6 +51,7 @@
 }
 
 [data-scene='night'] {
+  color-scheme: dark;
   --color-paper: #0c1018;
   --color-card: #161c28;
   --color-ink: #e8edf7;
@@ -59,6 +63,7 @@
 }
 
 [data-scene='sand'] {
+  color-scheme: light;
   --color-paper: #e8d5b5;
   --color-card: #f3e6cc;
   --color-ink: #3a2c1c;
@@ -89,11 +94,17 @@ input,
 textarea,
 select {
   font: inherit;
+  color: inherit;
 }
 
-textarea,
-input {
-  color: inherit;
+select {
+  background-color: var(--color-card);
+}
+
+select option,
+select optgroup {
+  color: var(--color-ink);
+  background-color: var(--color-card);
 }
 
 ::placeholder {

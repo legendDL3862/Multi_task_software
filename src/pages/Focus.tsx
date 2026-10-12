@@ -1,18 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { startNoise } from '../audio/noise'
+import { useEffect, useMemo, useState } from 'react'
+import { playAlarm } from '../audio/noise'
 import { TimerRing } from '../components/TimerRing'
 import { useI18n } from '../hooks/useI18n'
 import { buildDayStats, sessionsWithLive } from '../lib/stats'
 import { formatDuration, todayKey } from '../lib/time'
-import { queueItems, slotItem, useAppStore } from '../store/useAppStore'
-import type { NoiseType, Scene } from '../types'
+import { liveHabits, queueItems, slotItem, useAppStore } from '../store/useAppStore'
+import type { AlarmType, Scene } from '../types'
 
 const SCENES: Scene[] = ['dusk', 'paper', 'forest', 'night', 'sand']
-const NOISES: NoiseType[] = ['off', 'white', 'pink', 'brown']
+const ALARMS: AlarmType[] = ['off', 'chime', 'bell', 'wood']
 
 export function FocusPage() {
   const t = useI18n()
   const items = useAppStore((s) => s.items)
+  const habitRecords = useAppStore((s) => s.habits)
+  const habits = liveHabits(habitRecords)
   const sessions = useAppStore((s) => s.sessions)
   const timer = useAppStore((s) => s.timer)
   const settings = useAppStore((s) => s.settings)
@@ -20,63 +22,53 @@ export function FocusPage() {
   const pauseTimer = useAppStore((s) => s.pauseTimer)
   const resumeTimer = useAppStore((s) => s.resumeTimer)
   const stopTimer = useAppStore((s) => s.stopTimer)
-  const tickTimer = useAppStore((s) => s.tickTimer)
+  const completion = useAppStore((s) => s.completion)
+  const ackCompletion = useAppStore((s) => s.ackCompletion)
   const patchSettings = useAppStore((s) => s.patchSettings)
-  const addItem = useAppStore((s) => s.addItem)
   const primary = slotItem(items, 'primary')
   const secondary = slotItem(items, 'secondary')
   const others = queueItems(items)
-  const selectable = [primary, secondary, ...others].filter(Boolean)
   const [taskId, setTaskId] = useState('')
   const [minutes, setMinutes] = useState(settings.defaultMinutes)
-  const [thought, setThought] = useState('')
-  const noiseRef = useRef<ReturnType<typeof startNoise>>(null)
 
-  const task = items.find((i) => i.id === taskId && i.lane !== 'archive') ?? selectable[0]
+  const taskItem = items.find((i) => i.id === taskId && i.lane !== 'archive')
+  const taskHabit = habits.find((h) => h.id === taskId)
+  const task = taskItem ?? taskHabit ?? primary ?? secondary ?? others[0] ?? habits[0]
   const active = timer && task && timer.itemId === task.id ? timer : null
 
   const firstOtherId = others[0]?.id
+  const firstHabitId = habits[0]?.id
   useEffect(() => {
-    if (taskId && items.some((i) => i.id === taskId && i.lane !== 'archive')) return
-    setTaskId(primary?.id ?? secondary?.id ?? firstOtherId ?? '')
-  }, [taskId, items, primary?.id, secondary?.id, firstOtherId])
-
-  useEffect(() => {
-    const id = window.setInterval(() => void tickTimer(), 1000)
-    return () => window.clearInterval(id)
-  }, [tickTimer])
-
-  useEffect(() => {
-    noiseRef.current?.stop()
-    noiseRef.current = null
-    if (active?.running) {
-      noiseRef.current = startNoise(settings.noiseType, settings.noiseVolume)
-    }
-    return () => {
-      noiseRef.current?.stop()
-      noiseRef.current = null
-    }
-  }, [active?.running, settings.noiseType, settings.noiseVolume])
+    const existsItem = items.some((i) => i.id === taskId && i.lane !== 'archive')
+    const existsHabit = habits.some((h) => h.id === taskId)
+    if (taskId && (existsItem || existsHabit)) return
+    setTaskId(primary?.id ?? secondary?.id ?? firstOtherId ?? firstHabitId ?? '')
+  }, [taskId, items, habits, primary?.id, secondary?.id, firstOtherId, firstHabitId])
 
   const today = useMemo(() => {
-    const days = buildDayStats(sessionsWithLive(sessions, timer), settings)
+    const days = buildDayStats(sessionsWithLive(sessions, timer), settings, habitRecords)
     return days.get(todayKey())
-  }, [sessions, timer, settings])
+  }, [sessions, timer, settings, habitRecords])
 
   const clockValue =
     settings.timerMode === 'countdown'
       ? (active?.remainingSeconds ?? minutes * 60)
       : (active?.elapsedSeconds ?? 0)
 
-  const noiseLabel: Record<NoiseType, string> = {
-    off: t.noiseOff,
-    white: t.noiseWhite,
-    pink: t.noisePink,
-    brown: t.noiseBrown,
+  const alarmLabel: Record<AlarmType, string> = {
+    off: t.alarmOff,
+    chime: t.alarmChime,
+    bell: t.alarmBell,
+    wood: t.alarmWood,
   }
 
-  const roleLabel =
-    task?.lane === 'primary' ? t.primary : task?.lane === 'secondary' ? t.secondary : t.otherTasks
+  const roleLabel = taskHabit
+    ? t.habitTime
+    : taskItem?.lane === 'primary'
+      ? t.primary
+      : taskItem?.lane === 'secondary'
+        ? t.secondary
+        : t.otherTasks
 
   return (
     <div className="flex flex-col">
@@ -106,6 +98,15 @@ export function FocusPage() {
               ))}
             </optgroup>
           ) : null}
+          {habits.length ? (
+            <optgroup label={t.habitTime}>
+              {habits.map((habit) => (
+                <option key={habit.id} value={habit.id}>
+                  {habit.title}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
         </select>
         <button
           type="button"
@@ -131,15 +132,17 @@ export function FocusPage() {
 
       <div className="mt-4">
         <TimerRing
-          value={clockValue}
+          value={completion ? 0 : clockValue}
           planned={active?.plannedSeconds || minutes * 60}
           mode={settings.timerMode}
-          caption={task ? roleLabel : undefined}
-          title={task ? task.title : t.noTask}
+          caption={completion ? roleLabel : task ? roleLabel : undefined}
+          title={completion ? completion.title : task ? task.title : t.noTask}
+          done={Boolean(completion)}
+          doneLabel={t.sessionDone}
         />
       </div>
 
-      {settings.timerMode === 'countdown' && !active ? (
+      {settings.timerMode === 'countdown' && !active && !completion ? (
         <label className="mt-2 block text-center text-sm text-muted">
           {minutes} {t.minutes}
           <input
@@ -154,7 +157,15 @@ export function FocusPage() {
       ) : null}
 
       <div className="mt-4 flex justify-center gap-3">
-        {!task ? null : !active ? (
+        {completion ? (
+          <button
+            type="button"
+            className="rounded-full bg-sage px-10 py-3 text-paper"
+            onClick={() => ackCompletion()}
+          >
+            {t.confirm}
+          </button>
+        ) : !task ? null : !active ? (
           <button
             type="button"
             className="rounded-full bg-sage px-10 py-3 text-paper"
@@ -171,7 +182,7 @@ export function FocusPage() {
             {t.resume}
           </button>
         )}
-        {active ? (
+        {active && !completion ? (
           <button type="button" className="rounded-full border border-line px-8 py-3" onClick={() => void stopTimer()}>
             {t.stop}
           </button>
@@ -180,15 +191,15 @@ export function FocusPage() {
 
       <div className="mt-6 grid grid-cols-2 gap-2 text-xs">
         <label className="rounded-2xl border border-line bg-card px-3 py-2">
-          {t.noise}
+          {t.alarm}
           <select
-            className="mt-1 w-full bg-transparent"
-            value={settings.noiseType}
-            onChange={(e) => void patchSettings({ noiseType: e.target.value as NoiseType })}
+            className="mt-1 w-full rounded-full border border-line bg-card px-3 py-1.5 text-ink"
+            value={settings.alarmType}
+            onChange={(e) => void patchSettings({ alarmType: e.target.value as AlarmType })}
           >
-            {NOISES.map((n) => (
+            {ALARMS.map((n) => (
               <option key={n} value={n}>
-                {noiseLabel[n]}
+                {alarmLabel[n]}
               </option>
             ))}
           </select>
@@ -196,7 +207,7 @@ export function FocusPage() {
         <label className="rounded-2xl border border-line bg-card px-3 py-2">
           {t.scene}
           <select
-            className="mt-1 w-full bg-transparent"
+            className="mt-1 w-full rounded-full border border-line bg-card px-3 py-1.5 text-ink"
             value={settings.scene}
             onChange={(e) => void patchSettings({ scene: e.target.value as Scene })}
           >
@@ -208,19 +219,28 @@ export function FocusPage() {
           </select>
         </label>
       </div>
-      {settings.noiseType !== 'off' ? (
-        <label className="mt-2 block text-xs text-muted">
-          {t.volume} {Math.round(settings.noiseVolume * 100)}%
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={settings.noiseVolume}
-            onChange={(e) => void patchSettings({ noiseVolume: Number(e.target.value) })}
-            className="mt-1 w-full"
-          />
-        </label>
+      {settings.alarmType !== 'off' ? (
+        <div className="mt-2 flex items-end gap-2 text-xs text-muted">
+          <label className="block flex-1">
+            {t.volume} {Math.round(settings.alarmVolume * 100)}%
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={settings.alarmVolume}
+              onChange={(e) => void patchSettings({ alarmVolume: Number(e.target.value) })}
+              className="mt-1 w-full"
+            />
+          </label>
+          <button
+            type="button"
+            className="mb-1 shrink-0 rounded-full border border-line px-3 py-1.5"
+            onClick={() => playAlarm(settings.alarmType, settings.alarmVolume)}
+          >
+            {t.alarmPreview}
+          </button>
+        </div>
       ) : null}
 
       <p className="mt-4 text-center text-xs text-muted">
@@ -234,24 +254,10 @@ export function FocusPage() {
       </p>
       <p className="mt-1 text-center text-xs text-muted">
         {t.otherTime} {formatDuration(today?.other ?? 0, settings.locale)}
+        {today?.habitRows.length
+          ? ` · ${t.habitTime} ${today.habitMet ? t.met : t.notMet}`
+          : ''}
       </p>
-
-      {active ? (
-        <div className="mt-4 rounded-2xl border border-line bg-card p-3">
-          <input
-            value={thought}
-            onChange={(e) => setThought(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                void addItem({ title: thought })
-                setThought('')
-              }
-            }}
-            placeholder={t.parked}
-            className="w-full bg-transparent outline-none"
-          />
-        </div>
-      ) : null}
     </div>
   )
 }

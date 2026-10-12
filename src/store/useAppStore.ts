@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { playChime } from '../audio/noise'
+import { startAlarmLoop, stopAlarmLoop } from '../audio/noise'
+import { setMusicDuck } from '../lib/music'
 import { db } from '../db'
 import { uid } from '../lib/id'
 import { todayKey } from '../lib/time'
@@ -7,10 +8,12 @@ import type {
   BackupPayload,
   DailyLog,
   Folder,
+  Habit,
   Item,
   Lane,
   Note,
   Session,
+  CompletionState,
   Settings,
   Slot,
   TimerMode,
@@ -28,6 +31,10 @@ export const DEFAULT_SETTINGS: Settings = {
   timerMode: 'countdown',
   primaryMinMinutes: 90,
   secondaryMinMinutes: 30,
+  musicFolderLabel: '',
+  musicFolderPath: '',
+  alarmType: 'chime',
+  alarmVolume: 0.4,
 }
 
 type State = {
@@ -38,8 +45,10 @@ type State = {
   sessions: Session[]
   notes: Note[]
   dailyLogs: DailyLog[]
+  habits: Habit[]
   settings: Settings
   timer: TimerState
+  completion: CompletionState
   hydrate: () => Promise<void>
   setToast: (msg: string | null) => void
   addItem: (input: { title: string; content?: string; tags?: string[]; reflux?: boolean }) => Promise<string | null>
@@ -51,11 +60,16 @@ type State = {
   deleteItem: (id: string) => Promise<void>
   reorderQueue: (orderedIds: string[]) => Promise<void>
   applyTopOrder: (ids: string[]) => Promise<void>
+  addHabit: (input: { title: string; content?: string; tags?: string[]; dailyMinMinutes?: number }) => Promise<string | null>
+  updateHabit: (id: string, patch: Partial<Habit>) => Promise<void>
+  deleteHabit: (id: string) => Promise<void>
+  reorderHabits: (orderedIds: string[]) => Promise<void>
   startTimer: (itemId: string, minutes?: number, mode?: TimerMode) => Promise<void>
   pauseTimer: () => Promise<void>
   resumeTimer: () => void
   tickTimer: () => Promise<void>
   stopTimer: () => Promise<void>
+  ackCompletion: () => void
   patchSettings: (patch: Partial<Settings>) => Promise<void>
   exportBackup: () => Promise<BackupPayload>
   importBackup: (payload: BackupPayload) => Promise<void>
@@ -90,7 +104,9 @@ function normalizeItem(raw: Record<string, unknown>, index: number): Item {
 function normalizeSession(raw: Record<string, unknown>): Session {
   const itemId = String(raw.itemId)
   const slot: Slot =
-    raw.slot === 'primary' || raw.slot === 'secondary' || raw.slot === 'other' ? raw.slot : 'other'
+    raw.slot === 'primary' || raw.slot === 'secondary' || raw.slot === 'other' || raw.slot === 'habit'
+      ? raw.slot
+      : 'other'
   const startedAt = Number(raw.startedAt ?? Date.now())
   return {
     id: String(raw.id),
@@ -107,7 +123,43 @@ function normalizeSession(raw: Record<string, unknown>): Session {
 }
 
 function mergeSettings(raw: Partial<Settings> | undefined): Settings {
-  return { ...DEFAULT_SETTINGS, ...raw, id: 'settings' }
+  const noiseType =
+    raw?.noiseType === 'off' ||
+    raw?.noiseType === 'white' ||
+    raw?.noiseType === 'pink' ||
+    raw?.noiseType === 'brown' ||
+    raw?.noiseType === 'folder'
+      ? raw.noiseType
+      : DEFAULT_SETTINGS.noiseType
+  return {
+    ...DEFAULT_SETTINGS,
+    ...raw,
+    noiseType,
+    musicFolderLabel: raw?.musicFolderLabel ?? DEFAULT_SETTINGS.musicFolderLabel,
+    musicFolderPath: raw?.musicFolderPath ?? DEFAULT_SETTINGS.musicFolderPath,
+    alarmType:
+      raw?.alarmType === 'off' || raw?.alarmType === 'chime' || raw?.alarmType === 'bell' || raw?.alarmType === 'wood'
+        ? raw.alarmType
+        : DEFAULT_SETTINGS.alarmType,
+    alarmVolume: typeof raw?.alarmVolume === 'number' ? raw.alarmVolume : DEFAULT_SETTINGS.alarmVolume,
+    id: 'settings',
+  }
+}
+
+function normalizeHabit(raw: Record<string, unknown>, index: number): Habit {
+  return {
+    id: String(raw.id),
+    title: String(raw.title ?? ''),
+    content: typeof raw.content === 'string' ? raw.content : '',
+    tags: Array.isArray(raw.tags) ? raw.tags.filter((x) => typeof x === 'string') : [],
+    dailyMinMinutes: Math.max(1, Number(raw.dailyMinMinutes ?? 15)),
+    sortOrder: typeof raw.sortOrder === 'number' ? raw.sortOrder : index,
+    archived: Boolean(raw.archived),
+    totalSeconds: Number(raw.totalSeconds ?? 0),
+    sessionCount: Number(raw.sessionCount ?? 0),
+    createdAt: Number(raw.createdAt ?? Date.now()),
+    updatedAt: Number(raw.updatedAt ?? Date.now()),
+  }
 }
 
 async function putItem(item: Item) {
@@ -122,8 +174,10 @@ export const useAppStore = create<State>((set, get) => ({
   sessions: [],
   notes: [],
   dailyLogs: [],
+  habits: [],
   settings: DEFAULT_SETTINGS,
   timer: null,
+  completion: null,
 
   setToast: (msg) => set({ toast: msg }),
 
@@ -135,13 +189,18 @@ export const useAppStore = create<State>((set, get) => ({
     const items = rawItems.map((row, i) => normalizeItem(row, i))
     const rawSessions = (await db.sessions.toArray()) as unknown as Record<string, unknown>[]
     const sessions = rawSessions.map((row) => normalizeSession(row))
-    const [notes, dailyLogs] = await Promise.all([db.notes.toArray(), db.dailyLogs.toArray()])
+    const [notes, dailyLogs, rawHabits] = await Promise.all([
+      db.notes.toArray(),
+      db.dailyLogs.toArray(),
+      db.habits.toArray(),
+    ])
+    const habits = (rawHabits as unknown as Record<string, unknown>[]).map((row, i) => normalizeHabit(row, i))
     const needsWrite = rawItems.some(
       (row) => !('content' in row) || !('sortOrder' in row) || !('reflux' in row),
     )
     if (needsWrite) await db.items.bulkPut(items)
     document.documentElement.lang = settings.locale === 'zh' ? 'zh-CN' : 'en'
-    set({ ready: true, folders, items, sessions, notes, dailyLogs, settings })
+    set({ ready: true, folders, items, sessions, notes, dailyLogs, habits, settings })
   },
 
   addItem: async (input) => {
@@ -256,13 +315,64 @@ export const useAppStore = create<State>((set, get) => ({
     set({ items: next })
   },
 
+  addHabit: async (input) => {
+    const title = input.title.trim()
+    if (!title) return null
+    const now = Date.now()
+    const maxOrder = get().habits.reduce((m, h) => Math.max(m, h.sortOrder), 0)
+    const habit: Habit = {
+      id: uid(),
+      title,
+      content: input.content?.trim() ?? '',
+      tags: (input.tags ?? []).map((tag) => tag.trim()).filter(Boolean),
+      dailyMinMinutes: Math.max(1, input.dailyMinMinutes ?? 15),
+      sortOrder: maxOrder + 1,
+      archived: false,
+      totalSeconds: 0,
+      sessionCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    }
+    await db.habits.put(habit)
+    set({ habits: [...get().habits, habit], toast: t(get().settings, 'habitAdded') })
+    return habit.id
+  },
+
+  updateHabit: async (id, patch) => {
+    const current = get().habits.find((h) => h.id === id)
+    if (!current) return
+    const next: Habit = { ...current, ...patch, updatedAt: Date.now() }
+    await db.habits.put(next)
+    set({ habits: get().habits.map((h) => (h.id === id ? next : h)) })
+  },
+
+  deleteHabit: async (id) => {
+    await db.habits.delete(id)
+    set({ habits: get().habits.filter((h) => h.id !== id), toast: t(get().settings, 'habitDeleted') })
+  },
+
+  reorderHabits: async (orderedIds) => {
+    const now = Date.now()
+    const next = get().habits.map((habit) => {
+      const idx = orderedIds.indexOf(habit.id)
+      if (idx < 0) return habit
+      return { ...habit, sortOrder: idx, updatedAt: now }
+    })
+    await db.habits.bulkPut(next.filter((h) => orderedIds.includes(h.id)))
+    set({ habits: next })
+  },
+
   startTimer: async (itemId, minutes, mode) => {
+    get().ackCompletion()
     if (get().timer) await get().stopTimer()
     const settings = get().settings
     const timerMode = mode ?? settings.timerMode
     const planned = timerMode === 'countdown' ? (minutes ?? settings.defaultMinutes) * 60 : 0
+    const habit = get().habits.find((h) => h.id === itemId && !h.archived)
     const item = get().items.find((i) => i.id === itemId)
-    const slot: Slot = item?.lane === 'primary' || item?.lane === 'secondary' ? item.lane : 'other'
+    if (!habit && !item) return
+    const slot: Slot =
+      habit ? 'habit' : item?.lane === 'primary' || item?.lane === 'secondary' ? item.lane : 'other'
     const session: Session = {
       id: uid(),
       itemId,
@@ -313,9 +423,17 @@ export const useAppStore = create<State>((set, get) => ({
     const remaining = timer.remainingSeconds - 1
     const elapsed = timer.elapsedSeconds + 1
     if (remaining <= 0) {
-      set({ timer: { ...timer, remainingSeconds: 0, elapsedSeconds: elapsed, running: false } })
-      playChime()
+      const nextTimer = { ...timer, remainingSeconds: 0, elapsedSeconds: elapsed, running: false }
+      set({ timer: nextTimer })
+      const habit = get().habits.find((h) => h.id === timer.itemId)
+      const item = get().items.find((i) => i.id === timer.itemId)
+      const title = habit?.title ?? item?.title ?? ''
+      const itemId = timer.itemId
       await get().stopTimer()
+      const settings = get().settings
+      set({ completion: { itemId, title } })
+      setMusicDuck(true)
+      startAlarmLoop(settings.alarmType, settings.alarmVolume, 10000, () => get().ackCompletion())
       return
     }
     set({ timer: { ...timer, remainingSeconds: remaining, elapsedSeconds: elapsed } })
@@ -331,14 +449,33 @@ export const useAppStore = create<State>((set, get) => ({
       await db.sessions.put(nextSession)
       set({ sessions: get().sessions.map((s) => (s.id === nextSession.id ? nextSession : s)) })
     }
-    const item = get().items.find((i) => i.id === timer.itemId)
-    if (item && elapsed > 0) {
-      await get().updateItem(item.id, {
-        totalSeconds: item.totalSeconds + elapsed,
-        sessionCount: item.sessionCount + 1,
+    const habit = get().habits.find((h) => h.id === timer.itemId)
+    if (habit && elapsed > 0) {
+      await get().updateHabit(habit.id, {
+        totalSeconds: habit.totalSeconds + elapsed,
+        sessionCount: habit.sessionCount + 1,
       })
+    } else {
+      const item = get().items.find((i) => i.id === timer.itemId)
+      if (item && elapsed > 0) {
+        await get().updateItem(item.id, {
+          totalSeconds: item.totalSeconds + elapsed,
+          sessionCount: item.sessionCount + 1,
+        })
+      }
     }
     set({ timer: null })
+  },
+
+  ackCompletion: () => {
+    if (!get().completion) {
+      stopAlarmLoop()
+      setMusicDuck(false)
+      return
+    }
+    stopAlarmLoop()
+    setMusicDuck(false)
+    set({ completion: null })
   },
 
   patchSettings: async (patch) => {
@@ -349,33 +486,40 @@ export const useAppStore = create<State>((set, get) => ({
   },
 
   exportBackup: async () => ({
-    version: 2,
+    version: 3,
     exportedAt: Date.now(),
     folders: get().folders,
     items: get().items,
     sessions: get().sessions,
     notes: get().notes,
     dailyLogs: get().dailyLogs,
+    habits: get().habits,
     settings: get().settings,
   }),
 
   importBackup: async (payload) => {
-    if (payload.version !== 1 && payload.version !== 2) throw new Error('unknown backup')
-    await db.transaction('rw', [db.folders, db.items, db.sessions, db.notes, db.dailyLogs, db.settings], async () => {
-      await Promise.all([
-        db.folders.clear(),
-        db.items.clear(),
-        db.sessions.clear(),
-        db.notes.clear(),
-        db.dailyLogs.clear(),
-      ])
-      if (payload.folders.length) await db.folders.bulkAdd(payload.folders)
-      if (payload.items.length) await db.items.bulkAdd(payload.items)
-      if (payload.sessions.length) await db.sessions.bulkAdd(payload.sessions)
-      if (payload.notes.length) await db.notes.bulkAdd(payload.notes)
-      if (payload.dailyLogs.length) await db.dailyLogs.bulkAdd(payload.dailyLogs)
-      await db.settings.put(mergeSettings(payload.settings))
-    })
+    if (payload.version !== 1 && payload.version !== 2 && payload.version !== 3) throw new Error('unknown backup')
+    await db.transaction(
+      'rw',
+      [db.folders, db.items, db.sessions, db.notes, db.dailyLogs, db.habits, db.settings],
+      async () => {
+        await Promise.all([
+          db.folders.clear(),
+          db.items.clear(),
+          db.sessions.clear(),
+          db.notes.clear(),
+          db.dailyLogs.clear(),
+          db.habits.clear(),
+        ])
+        if (payload.folders.length) await db.folders.bulkAdd(payload.folders)
+        if (payload.items.length) await db.items.bulkAdd(payload.items)
+        if (payload.sessions.length) await db.sessions.bulkAdd(payload.sessions)
+        if (payload.notes.length) await db.notes.bulkAdd(payload.notes)
+        if (payload.dailyLogs.length) await db.dailyLogs.bulkAdd(payload.dailyLogs)
+        if (payload.habits?.length) await db.habits.bulkAdd(payload.habits)
+        await db.settings.put(mergeSettings(payload.settings))
+      },
+    )
     await get().hydrate()
   },
 }))
@@ -388,4 +532,8 @@ export function queueItems(items: Item[]) {
 
 export function slotItem(items: Item[], slot: 'primary' | 'secondary') {
   return items.find((i) => i.lane === slot)
+}
+
+export function liveHabits(habits: Habit[]) {
+  return habits.filter((h) => !h.archived).sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt)
 }

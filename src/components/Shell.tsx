@@ -1,27 +1,35 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useI18n } from '../hooks/useI18n'
 import { useAppStore } from '../store/useAppStore'
+import { MusicBar } from './MusicBar'
 import { Toast } from './Toast'
 
-const PATHS = ['/', '/lot', '/archive', '/stats'] as const
+const PATHS = ['/', '/lot', '/habits', '/archive', '/stats'] as const
 
 export function Shell() {
   const t = useI18n()
   const scene = useAppStore((s) => s.settings.scene)
+  const tickTimer = useAppStore((s) => s.tickTimer)
   const location = useLocation()
   const navigate = useNavigate()
   const start = useRef<{ x: number; y: number } | null>(null)
   const tabs = [
     { to: '/', label: t.tabExecute, end: true },
     { to: '/lot', label: t.tabLot },
+    { to: '/habits', label: t.tabHabits },
     { to: '/archive', label: t.tabArchive },
     { to: '/stats', label: t.tabStats },
   ]
 
+  useEffect(() => {
+    const id = window.setInterval(() => void tickTimer(), 1000)
+    return () => window.clearInterval(id)
+  }, [tickTimer])
+
   function onTouchStart(e: React.TouchEvent) {
     const el = e.target as HTMLElement
-    if (el.closest('input, textarea, select, [draggable="true"]')) {
+    if (el.closest('input, textarea, select, button, [draggable="true"]')) {
       start.current = null
       return
     }
@@ -54,8 +62,9 @@ export function Shell() {
         <main className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 pb-4 pt-5">
           <Outlet />
         </main>
-        <footer className="z-20 shrink-0 border-t border-line bg-paper px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-2">
-          <nav className="grid grid-cols-4 gap-1 text-center text-xs">
+        <footer className="z-20 shrink-0 bg-paper pb-[max(10px,env(safe-area-inset-bottom))]">
+          <MusicBar />
+          <nav className="grid grid-cols-5 gap-0.5 border-t border-line px-3 pt-2 text-center text-[11px] leading-tight">
             {tabs.map((tab) => (
               <NavLink
                 key={tab.to}

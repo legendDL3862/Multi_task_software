@@ -30,10 +30,12 @@ export function LotPage() {
   const [dragging, setDragging] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [filterTags, setFilterTags] = useState<string[]>([])
+  const [composerOpen, setComposerOpen] = useState(false)
 
+  const habits = useAppStore((s) => s.habits)
   const today = useMemo(
-    () => buildDayStats(sessionsWithLive(sessions, timer), settings).get(todayKey()),
-    [sessions, timer, settings],
+    () => buildDayStats(sessionsWithLive(sessions, timer), settings, habits).get(todayKey()),
+    [sessions, timer, settings, habits],
   )
 
   const knownTags = useMemo(
@@ -62,6 +64,7 @@ export function LotPage() {
     setContent('')
     setDraftTags([])
     setReflux(true)
+    setComposerOpen(false)
   }
 
   function toggleTag(list: string[], id: string) {
@@ -144,50 +147,61 @@ export function LotPage() {
         completeLabel={t.complete}
       />
 
-      <form
-        className="mt-5 space-y-2 rounded-3xl border border-line bg-card p-4"
-        onSubmit={(e) => {
-          e.preventDefault()
-          void submit()
-        }}
-      >
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder={t.title}
-          className="w-full bg-transparent outline-none"
-        />
-        <textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder={t.content}
-          rows={3}
-          className="w-full resize-none bg-transparent outline-none"
-        />
-        <p className="text-xs text-muted">{t.tags}</p>
-        <TagChips
-          tags={PRESET_TAGS.map((tag) => tag.id)}
-          locale={settings.locale}
-          selected={draftTags}
-          onToggle={(id) => setDraftTags(toggleTag(draftTags, id))}
-        />
-        <input
-          value={draftTags.filter((tag) => !PRESET_TAGS.some((p) => p.id === tag)).join(', ')}
-          onChange={(e) => {
-            const custom = parseTagInput(e.target.value).filter((tag) => !PRESET_TAGS.some((p) => p.id === tag))
-            setDraftTags([...draftTags.filter((tag) => PRESET_TAGS.some((p) => p.id === tag)), ...custom])
-          }}
-          placeholder={t.tagsHint}
-          className="w-full bg-transparent text-sm outline-none"
-        />
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={reflux} onChange={(e) => setReflux(e.target.checked)} />
-          {t.reflux}
-        </label>
-        <button type="submit" className="rounded-full bg-sage px-4 py-2 text-sm text-paper">
-          {t.add}
+      <div className="mt-5">
+        <button
+          type="button"
+          className="w-full rounded-2xl border border-dashed border-line px-4 py-2.5 text-sm text-muted"
+          onClick={() => setComposerOpen((open) => !open)}
+        >
+          {composerOpen ? '×' : '+'} {t.addPlan}
         </button>
-      </form>
+        {composerOpen ? (
+          <form
+            className="mt-2 space-y-2 rounded-3xl border border-line bg-card p-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void submit()
+            }}
+          >
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={t.title}
+              className="w-full bg-transparent outline-none"
+            />
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder={t.content}
+              rows={3}
+              className="w-full resize-none bg-transparent outline-none"
+            />
+            <p className="text-xs text-muted">{t.tags}</p>
+            <TagChips
+              tags={PRESET_TAGS.map((tag) => tag.id)}
+              locale={settings.locale}
+              selected={draftTags}
+              onToggle={(id) => setDraftTags(toggleTag(draftTags, id))}
+            />
+            <input
+              value={draftTags.filter((tag) => !PRESET_TAGS.some((p) => p.id === tag)).join(', ')}
+              onChange={(e) => {
+                const custom = parseTagInput(e.target.value).filter((tag) => !PRESET_TAGS.some((p) => p.id === tag))
+                setDraftTags([...draftTags.filter((tag) => PRESET_TAGS.some((p) => p.id === tag)), ...custom])
+              }}
+              placeholder={t.tagsHint}
+              className="w-full bg-transparent text-sm outline-none"
+            />
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={reflux} onChange={(e) => setReflux(e.target.checked)} />
+              {t.reflux}
+            </label>
+            <button type="submit" className="rounded-full bg-sage px-4 py-2 text-sm text-paper">
+              {t.add}
+            </button>
+          </form>
+        ) : null}
+      </div>
 
       <h2 className="mt-6 text-lg font-medium">{t.queue}</h2>
       <input
