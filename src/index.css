@@ -80,6 +80,7 @@ body,
   height: 100%;
   height: 100dvh;
   overflow: hidden;
+  overscroll-behavior-x: none;
 }
 
 body {
@@ -110,4 +111,12 @@ select optgroup {
 ::placeholder {
   color: var(--color-muted);
   opacity: 0.85;
+}
+
+html[data-sorting],
+html[data-sorting] body,
+html[data-sorting] main {
+  user-select: none;
+  overscroll-behavior: none;
+  touch-action: none;
 }

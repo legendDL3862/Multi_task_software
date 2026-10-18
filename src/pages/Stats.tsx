@@ -1,15 +1,20 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { useI18n } from '../hooks/useI18n'
 import { buildDayStats, lastNDays, monthKeys, sessionsWithLive, sumRange, yearKeys } from '../lib/stats'
 import { formatDuration, todayKey } from '../lib/time'
 import { useAppStore } from '../store/useAppStore'
+import type { BackupPayload } from '../types'
 
 export function StatsPage() {
   const t = useI18n()
+  const fileRef = useRef<HTMLInputElement>(null)
   const sessions = useAppStore((s) => s.sessions)
   const timer = useAppStore((s) => s.timer)
   const settings = useAppStore((s) => s.settings)
   const habits = useAppStore((s) => s.habits)
+  const exportBackup = useAppStore((s) => s.exportBackup)
+  const importBackup = useAppStore((s) => s.importBackup)
+  const setToast = useAppStore((s) => s.setToast)
   const now = new Date()
   const days = useMemo(
     () => buildDayStats(sessionsWithLive(sessions, timer), settings, habits),
@@ -23,9 +28,62 @@ export function StatsPage() {
   const yearSum = sumRange(days, year)
   const allMet = [...days.values()].filter((d) => d.met).length
 
+  async function onExport() {
+    const name = `dual-slot-${todayKey()}.json`
+    const file = new File([JSON.stringify(await exportBackup(), null, 2)], name, { type: 'application/json' })
+    try {
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: name })
+        setToast(t.exportedToast)
+        return
+      }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return
+    }
+    const url = URL.createObjectURL(file)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = name
+    a.click()
+    URL.revokeObjectURL(url)
+    setToast(t.exportedToast)
+  }
+
+  async function onImport(file: File | undefined) {
+    if (!file) return
+    try {
+      const payload = JSON.parse(await file.text()) as BackupPayload
+      await importBackup(payload)
+      setToast(t.importedToast)
+    } catch {
+      setToast(t.importFailed)
+    }
+  }
+
   return (
     <div>
-      <h1 className="text-2xl font-medium">{t.statsTitle}</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="min-w-0 text-2xl font-medium">{t.statsTitle}</h1>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button type="button" className="rounded-full border border-line px-2.5 py-1 text-xs" onClick={() => void onExport()}>
+            {t.exportData}
+          </button>
+          <button type="button" className="rounded-full border border-line px-2.5 py-1 text-xs" onClick={() => fileRef.current?.click()}>
+            {t.importData}
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              void onImport(file)
+            }}
+          />
+        </div>
+      </div>
       <p className="mt-2 text-sm text-muted">{t.statsRule}</p>
 
       <section className="mt-5 rounded-3xl border border-line bg-card p-4">

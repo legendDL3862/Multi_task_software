@@ -12,13 +12,49 @@ import {
   setMusicSource,
   setMusicVolume,
   skipSeconds,
+  setPlayMode,
   skipTrack,
   supportsDirectoryPicker,
 } from '../lib/music'
 import { useAppStore } from '../store/useAppStore'
-import type { MusicSource } from '../types'
+import type { MusicSource, PlayMode } from '../types'
+
+const PLAY_MODES: PlayMode[] = ['sequence', 'loop', 'shuffle']
 
 const SOURCES: MusicSource[] = ['off', 'white', 'pink', 'brown', 'folder']
+
+function PlayModeIcon({ mode }: { mode: PlayMode }) {
+  if (mode === 'shuffle') {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="m16 3 4 4-4 4" />
+        <path d="M4 7h4l8 10h4" />
+        <path d="m16 21 4-4" />
+        <path d="M4 17h4l1.8-2.2" />
+      </svg>
+    )
+  }
+  if (mode === 'loop') {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="m17 2 4 4-4 4" />
+        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+        <path d="m7 22-4-4 4-4" />
+        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+        <path d="M12 9.2v5.6" />
+        <path d="M10.6 10.6 12 9.2" />
+      </svg>
+    )
+  }
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+    </svg>
+  )
+}
 
 function clock(seconds: number) {
   const s = Math.max(0, Math.floor(seconds))
@@ -45,6 +81,10 @@ export function MusicBar() {
   useEffect(() => {
     setMusicVolume(settings.noiseVolume)
   }, [settings.noiseVolume])
+
+  useEffect(() => {
+    setPlayMode(settings.musicPlayMode)
+  }, [settings.musicPlayMode])
 
   const labels: Record<MusicSource, string> = {
     off: t.noiseOff,
@@ -137,6 +177,30 @@ export function MusicBar() {
               <button type="button" className="rounded-full border border-line px-2 py-1" onClick={() => void skipTrack(1)}>
                 {t.nextTrack}
               </button>
+              <button
+                type="button"
+                title={
+                  settings.musicPlayMode === 'sequence'
+                    ? t.playSequence
+                    : settings.musicPlayMode === 'loop'
+                      ? t.playLoop
+                      : t.playShuffle
+                }
+                aria-label={
+                  settings.musicPlayMode === 'sequence'
+                    ? t.playSequence
+                    : settings.musicPlayMode === 'loop'
+                      ? t.playLoop
+                      : t.playShuffle
+                }
+                className="rounded-full border border-line px-2 py-1"
+                onClick={() => {
+                  const i = PLAY_MODES.indexOf(settings.musicPlayMode)
+                  void patchSettings({ musicPlayMode: PLAY_MODES[(i + 1) % PLAY_MODES.length] })
+                }}
+              >
+                <PlayModeIcon mode={settings.musicPlayMode} />
+              </button>
             </>
           ) : null}
         </div>
@@ -180,7 +244,6 @@ export function MusicBar() {
           <input
             ref={fileRef}
             type="file"
-            accept="audio/*"
             multiple
             className="hidden"
             onChange={(e) => {

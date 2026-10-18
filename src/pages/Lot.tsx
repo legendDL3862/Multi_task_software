@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
+import { SortGhostCard, useLongPressSort } from '../hooks/useLongPressSort'
 import { useI18n } from '../hooks/useI18n'
+import { applyInsert } from '../lib/insertOrder'
 import { buildDayStats, sessionsWithLive } from '../lib/stats'
 import { allKnownTags, parseTagInput, PRESET_TAGS, tagLabel } from '../lib/tags'
 import { formatDuration, todayKey } from '../lib/time'
@@ -27,7 +29,6 @@ export function LotPage() {
   const [draftTags, setDraftTags] = useState<string[]>([])
   const [reflux, setReflux] = useState(true)
   const [openId, setOpenId] = useState<string | null>(null)
-  const [dragging, setDragging] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [filterTags, setFilterTags] = useState<string[]>([])
   const [composerOpen, setComposerOpen] = useState(false)
@@ -70,24 +71,14 @@ export function LotPage() {
   function toggleTag(list: string[], id: string) {
     return list.includes(id) ? list.filter((x) => x !== id) : [...list, id]
   }
-
-  function onDropSlot(slot: 'primary' | 'secondary') {
-    if (!dragging) return
-    void promote(dragging, slot)
-    setDragging(null)
-  }
-
-  function onDropQueue(targetId: string) {
-    if (!dragging || dragging === targetId) return
-    const ids = queue.map((i) => i.id)
-    const from = ids.indexOf(dragging)
-    const to = ids.indexOf(targetId)
-    if (from < 0 || to < 0) return
-    ids.splice(from, 1)
-    ids.splice(to, 0, dragging)
-    void reorderQueue(ids)
-    setDragging(null)
-  }
+  const sort = useLongPressSort({
+    onReorder: (activeId, beforeId) => {
+      void reorderQueue(applyInsert(queue.map((item) => item.id), activeId, beforeId))
+    },
+    onSlot: (activeId, slot) => {
+      void promote(activeId, slot)
+    },
+  })
 
   return (
     <div>
@@ -128,7 +119,8 @@ export function LotPage() {
         empty={t.emptySlot}
         locale={settings.locale}
         itemTotalLabel={t.itemTotal}
-        onDrop={() => onDropSlot('primary')}
+        highlight={sort.overSlot === 'primary'}
+        slotProps={sort.slotProps('primary')}
         onPark={() => primary && void park(primary.id)}
         onComplete={() => primary && void complete(primary.id)}
         completeLabel={t.complete}
@@ -141,7 +133,8 @@ export function LotPage() {
         empty={t.emptySlot}
         locale={settings.locale}
         itemTotalLabel={t.itemTotal}
-        onDrop={() => onDropSlot('secondary')}
+        highlight={sort.overSlot === 'secondary'}
+        slotProps={sort.slotProps('secondary')}
         onPark={() => secondary && void park(secondary.id)}
         onComplete={() => secondary && void complete(secondary.id)}
         completeLabel={t.complete}
@@ -217,15 +210,11 @@ export function LotPage() {
         selected={filterTags}
         onToggle={(id) => setFilterTags(toggleTag(filterTags, id))}
       />
-      <p className="mt-2 text-xs text-muted">{t.dragHint}</p>
-      <ul className="mt-3 space-y-2">
+      <ul className="mt-3 space-y-2" data-sort-list>
         {filteredQueue.map((item) => (
           <li
             key={item.id}
-            draggable
-            onDragStart={() => setDragging(item.id)}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => onDropQueue(item.id)}
+            {...sort.itemProps(item.id)}
             className="rounded-3xl border border-line bg-card p-4"
           >
             <button type="button" className="w-full text-left" onClick={() => setOpenId(openId === item.id ? null : item.id)}>
@@ -244,7 +233,7 @@ export function LotPage() {
                 onChange={(patch) => void updateItem(item.id, patch)}
               />
             ) : null}
-            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            <div className="mt-2 flex flex-wrap gap-2 text-xs" data-no-drag>
               <button type="button" onClick={() => void promote(item.id, 'primary')}>{t.primary}</button>
               <button type="button" onClick={() => void promote(item.id, 'secondary')}>{t.secondary}</button>
               <button type="button" onClick={() => void complete(item.id)}>{t.complete}</button>
@@ -252,6 +241,7 @@ export function LotPage() {
           </li>
         ))}
       </ul>
+      <SortGhostCard />
     </div>
   )
 }
@@ -293,7 +283,8 @@ function SlotDrop({
   empty,
   locale,
   itemTotalLabel,
-  onDrop,
+  highlight,
+  slotProps,
   onPark,
   onComplete,
   completeLabel,
@@ -304,16 +295,16 @@ function SlotDrop({
   empty: string
   locale: 'zh' | 'en'
   itemTotalLabel: string
-  onDrop: () => void
+  highlight: boolean
+  slotProps: { 'data-sort-slot': 'primary' | 'secondary' }
   onPark: () => void
   onComplete: () => void
   completeLabel: string
 }) {
   return (
     <div
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={onDrop}
-      className="rounded-3xl border border-dashed border-line bg-card p-4"
+      {...slotProps}
+      className={`rounded-3xl border border-dashed bg-card p-4 ${highlight ? 'border-sage' : 'border-line'}`}
     >
       <p className="text-xs uppercase tracking-widest text-muted">{label}</p>
       <p className="text-xs text-muted">{hint}</p>

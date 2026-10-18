@@ -11,6 +11,7 @@ export function Shell() {
   const t = useI18n()
   const scene = useAppStore((s) => s.settings.scene)
   const tickTimer = useAppStore((s) => s.tickTimer)
+  const persistTimer = useAppStore((s) => s.persistTimer)
   const location = useLocation()
   const navigate = useNavigate()
   const start = useRef<{ x: number; y: number } | null>(null)
@@ -27,9 +28,24 @@ export function Shell() {
     return () => window.clearInterval(id)
   }, [tickTimer])
 
+  useEffect(() => {
+    const persist = () => void persistTimer()
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') persist()
+    }
+    window.addEventListener('pagehide', persist)
+    window.addEventListener('freeze', persist)
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      window.removeEventListener('pagehide', persist)
+      window.removeEventListener('freeze', persist)
+      document.removeEventListener('visibilitychange', onHide)
+    }
+  }, [persistTimer])
+
   function onTouchStart(e: React.TouchEvent) {
     const el = e.target as HTMLElement
-    if (el.closest('input, textarea, select, button, [draggable="true"]')) {
+    if (el.closest('input, textarea, select, button, [data-sort-id], [data-sorting]')) {
       start.current = null
       return
     }

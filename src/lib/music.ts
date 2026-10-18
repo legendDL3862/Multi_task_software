@@ -1,5 +1,13 @@
 import { startNoise } from '../audio/noise'
-import type { MusicSource } from '../types'
+import {
+  canPickNativeMusicFolder,
+  isNativeMusicUri,
+  listNativeMusicFolder,
+  loadNativeMusicFile,
+  pickNativeMusicFolder,
+  type NativeFolder,
+} from './nativeMusic'
+import type { MusicSource, PlayMode } from '../types'
 
 const AUDIO = /\.(mp3|wav|ogg|oga|m4a|aac|flac|webm|opus)$/i
 const HANDLE_DB = 'dual-slot-music'
@@ -19,6 +27,7 @@ type DirectoryHandle = FileSystemDirectoryHandle & {
 export type MusicSnapshot = {
   source: MusicSource
   playing: boolean
+  active: boolean
   trackName: string | null
   index: number
   count: number
@@ -35,14 +44,17 @@ let index = 0
 let loadedIndex = -1
 let playGen = 0
 let source: MusicSource = 'off'
+let playMode: PlayMode = 'sequence'
 let volume = 0.18
 let duck = 1
 let playing = false
 let wantPlay = false
+let sessionLive = false
 let noise: ReturnType<typeof startNoise> = null
 let snapshot: MusicSnapshot = {
   source: 'off',
   playing: false,
+  active: false,
   trackName: null,
   index: 0,
   count: 0,
@@ -54,6 +66,7 @@ function readSnapshot(): MusicSnapshot {
   return {
     source,
     playing,
+    active: sessionLive && source !== 'off',
     trackName: tracks[index]?.name ?? null,
     index,
     count: tracks.length,
@@ -93,11 +106,54 @@ function audibleVolume() {
   return Math.min(1, Math.max(0, volume * duck))
 }
 
+function clearMediaSession() {
+  const session = navigator.mediaSession
+  if (!session) return
+  try {
+    session.metadata = null
+    session.playbackState = 'none'
+  } catch {
+    /* ignore */
+  }
+}
+
+function bindHeadsetSkip() {
+  const session = navigator.mediaSession
+  if (!session) return
+  try {
+    session.setActionHandler('previoustrack', () => {
+      void skipTrack(-1)
+    })
+    session.setActionHandler('nexttrack', () => {
+      void skipTrack(1)
+    })
+    session.setActionHandler('play', () => {
+      void playMusic()
+    })
+    session.setActionHandler('pause', () => {
+      pauseMusic()
+    })
+  } catch {
+    /* ignore */
+  }
+}
+
 function ensureAudio() {
   if (audio) return audio
   audio = new Audio()
   audio.preload = 'auto'
+  audio.crossOrigin = 'anonymous'
+  audio.setAttribute('playsinline', 'true')
+  audio.disableRemotePlayback = true
+  clearMediaSession()
   audio.addEventListener('ended', () => {
+    const el = audio
+    if (!el) return
+    if (playMode === 'loop') {
+      el.currentTime = 0
+      if (wantPlay) void el.play()
+      return
+    }
     void skipTrack(1)
   })
   audio.addEventListener('timeupdate', () => {
@@ -131,7 +187,9 @@ async function playIndex(nextIndex: number) {
   index = (nextIndex + tracks.length) % tracks.length
   const track = tracks[index]
   const el = ensureAudio()
+  el.muted = false
   el.volume = audibleVolume()
+  bindHeadsetSkip()
   if (loadedIndex !== index) {
     revoke()
     const payload = await track.load()
@@ -149,6 +207,7 @@ async function playIndex(nextIndex: number) {
   if (wantPlay && gen === playGen) {
     try {
       await el.play()
+      clearMediaSession()
     } catch {
       if (gen !== playGen) return
       playing = false
@@ -178,9 +237,23 @@ async function applySource() {
 export function setMusicSource(next: MusicSource) {
   if (source === next) return
   source = next
-  if (next === 'off') wantPlay = false
+  if (next === 'off') {
+    wantPlay = false
+    sessionLive = false
+  }
   void applySource()
   if (wantPlay && source === 'folder') void playIndex(index)
+}
+
+export function setPlayMode(next: PlayMode) {
+  playMode = next
+}
+
+function nextShuffleIndex() {
+  if (tracks.length <= 1) return 0
+  let next = index
+  while (next === index) next = Math.floor(Math.random() * tracks.length)
+  return next
 }
 
 export function setMusicVolume(next: number) {
@@ -199,13 +272,21 @@ export function setMusicDuck(on: boolean) {
 export async function playMusic(nextSource?: MusicSource) {
   if (nextSource) source = nextSource
   wantPlay = source !== 'off'
+  sessionLive = wantPlay
   if (source === 'off') {
     playing = false
+    sessionLive = false
     emit()
     return
   }
   if (source === 'folder') {
-    if (!tracks.length) return
+    if (!tracks.length) {
+      wantPlay = false
+      sessionLive = false
+      playing = false
+      emit()
+      return
+    }
     await playIndex(index)
     return
   }
@@ -232,6 +313,10 @@ export function toggleMusic() {
 export async function skipTrack(delta: number) {
   if (!tracks.length || source !== 'folder') return
   loadedIndex = -1
+  if (playMode === 'shuffle' && tracks.length > 1) {
+    await playIndex(nextShuffleIndex())
+    return
+  }
   await playIndex(index + delta)
 }
 
@@ -240,6 +325,11 @@ export function skipSeconds(delta: number) {
   const duration = Number.isFinite(audio.duration) ? audio.duration : 0
   const next = Math.max(0, audio.currentTime + delta)
   if (duration && next >= duration - 0.05) {
+    if (playMode === 'loop') {
+      audio.currentTime = 0
+      emit()
+      return
+    }
     void skipTrack(1)
     return
   }
@@ -340,7 +430,27 @@ async function collectFromElectron(dir: string): Promise<Track[]> {
   }))
 }
 
+function applyNativeFolder(folder: NativeFolder) {
+  setTracks(
+    folder.files.slice(0, MAX_TRACKS).map((row) => ({
+      name: row.name,
+      load: () => loadNativeMusicFile(row.uri),
+    })),
+  )
+}
+
 export async function pickMusicFolder(): Promise<{ label: string; path: string; count: number } | null> {
+  if (canPickNativeMusicFolder()) {
+    try {
+      const folder = await pickNativeMusicFolder()
+      applyNativeFolder(folder)
+      return { label: folder.label, path: folder.uri, count: tracks.length }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (/cancel/i.test(msg)) return null
+    }
+  }
+
   const desktop = window.dualSlotDesktop
   if (desktop) {
     const dir = await desktop.pickMusicFolder()
@@ -362,7 +472,11 @@ export async function pickMusicFolder(): Promise<{ label: string; path: string; 
 }
 
 export function supportsDirectoryPicker() {
-  return Boolean(window.dualSlotDesktop) || typeof window.showDirectoryPicker === 'function'
+  return (
+    canPickNativeMusicFolder() ||
+    Boolean(window.dualSlotDesktop) ||
+    typeof window.showDirectoryPicker === 'function'
+  )
 }
 
 export function ingestMusicFiles(files: FileList | File[]): { label: string; count: number } {
@@ -381,6 +495,14 @@ export function ingestMusicFiles(files: FileList | File[]): { label: string; cou
 
 export async function restoreMusicFolder(path: string): Promise<number> {
   if (tracks.length) return tracks.length
+  if (canPickNativeMusicFolder() && isNativeMusicUri(path)) {
+    try {
+      applyNativeFolder(await listNativeMusicFolder(path))
+    } catch {
+      return tracks.length
+    }
+    return tracks.length
+  }
   if (window.dualSlotDesktop && path) {
     await window.dualSlotDesktop.setMusicFolder(path)
     setTracks(await collectFromElectron(path))

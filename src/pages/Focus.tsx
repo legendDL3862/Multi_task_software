@@ -29,7 +29,7 @@ export function FocusPage() {
   const secondary = slotItem(items, 'secondary')
   const others = queueItems(items)
   const [taskId, setTaskId] = useState('')
-  const [minutes, setMinutes] = useState(settings.defaultMinutes)
+  const [minutes, setMinutes] = useState<number | ''>(settings.defaultMinutes)
 
   const taskItem = items.find((i) => i.id === taskId && i.lane !== 'archive')
   const taskHabit = habits.find((h) => h.id === taskId)
@@ -50,9 +50,11 @@ export function FocusPage() {
     return days.get(todayKey())
   }, [sessions, timer, settings, habitRecords])
 
+  const minuteCount = minutes === '' ? 0 : minutes
+  const startMinutes = minutes === '' || minutes < 1 ? 1 : Math.min(180, minutes)
   const clockValue =
     settings.timerMode === 'countdown'
-      ? (active?.remainingSeconds ?? minutes * 60)
+      ? (active?.remainingSeconds ?? minuteCount * 60)
       : (active?.elapsedSeconds ?? 0)
 
   const alarmLabel: Record<AlarmType, string> = {
@@ -133,7 +135,7 @@ export function FocusPage() {
       <div className="mt-4">
         <TimerRing
           value={completion ? 0 : clockValue}
-          planned={active?.plannedSeconds || minutes * 60}
+          planned={active?.plannedSeconds || startMinutes * 60}
           mode={settings.timerMode}
           caption={completion ? roleLabel : task ? roleLabel : undefined}
           title={completion ? completion.title : task ? task.title : t.noTask}
@@ -143,15 +145,25 @@ export function FocusPage() {
       </div>
 
       {settings.timerMode === 'countdown' && !active && !completion ? (
-        <label className="mt-2 block text-center text-sm text-muted">
-          {minutes} {t.minutes}
+        <label className="mt-2 flex items-center justify-center gap-2 text-sm text-muted">
+          {t.minutes}
           <input
-            type="range"
+            type="number"
+            inputMode="numeric"
             min={1}
             max={180}
             value={minutes}
-            onChange={(e) => setMinutes(Number(e.target.value))}
-            className="mt-2 w-full"
+            onChange={(e) => {
+              const raw = e.target.value
+              if (raw === '') {
+                setMinutes('')
+                return
+              }
+              const n = Number(raw)
+              if (!Number.isFinite(n)) return
+              setMinutes(Math.min(180, Math.max(0, Math.round(n))))
+            }}
+            className="w-24 rounded-full border border-line bg-card px-3 py-1.5 text-center text-base text-ink"
           />
         </label>
       ) : null}
@@ -169,7 +181,10 @@ export function FocusPage() {
           <button
             type="button"
             className="rounded-full bg-sage px-10 py-3 text-paper"
-            onClick={() => void startTimer(task.id, minutes, settings.timerMode)}
+            onClick={() => {
+              setMinutes(startMinutes)
+              void startTimer(task.id, startMinutes, settings.timerMode)
+            }}
           >
             {t.start}
           </button>

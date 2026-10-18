@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
+import { SortGhostCard, useLongPressSort } from '../hooks/useLongPressSort'
 import { useI18n } from '../hooks/useI18n'
+import { applyInsert } from '../lib/insertOrder'
 import { buildDayStats, sessionsWithLive } from '../lib/stats'
 import { allKnownTags, parseTagInput, PRESET_TAGS, tagLabel } from '../lib/tags'
 import { formatDuration, todayKey } from '../lib/time'
@@ -23,7 +25,6 @@ export function HabitsPage() {
   const [draftTags, setDraftTags] = useState<string[]>([])
   const [dailyMin, setDailyMin] = useState(15)
   const [openId, setOpenId] = useState<string | null>(null)
-  const [dragging, setDragging] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [filterTags, setFilterTags] = useState<string[]>([])
 
@@ -60,17 +61,11 @@ export function HabitsPage() {
     return tags.includes(id) ? tags.filter((x) => x !== id) : [...tags, id]
   }
 
-  function onDrop(targetId: string) {
-    if (!dragging || dragging === targetId) return
-    const ids = list.map((h) => h.id)
-    const from = ids.indexOf(dragging)
-    const to = ids.indexOf(targetId)
-    if (from < 0 || to < 0) return
-    ids.splice(from, 1)
-    ids.splice(to, 0, dragging)
-    void reorderHabits(ids)
-    setDragging(null)
-  }
+  const sort = useLongPressSort({
+    onReorder: (activeId, beforeId) => {
+      void reorderHabits(applyInsert(list.map((habit) => habit.id), activeId, beforeId))
+    },
+  })
 
   return (
     <div>
@@ -158,18 +153,11 @@ export function HabitsPage() {
       </div>
       <p className="mt-3 text-xs text-muted">{t.dragHint}</p>
 
-      <ul className="mt-3 space-y-2">
+      <ul className="mt-3 space-y-2" data-sort-list>
         {filtered.map((habit) => {
           const row = today?.habitRows.find((h) => h.id === habit.id)
           return (
-            <li
-              key={habit.id}
-              draggable
-              onDragStart={() => setDragging(habit.id)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => onDrop(habit.id)}
-              className="rounded-3xl border border-line bg-card p-4"
-            >
+            <li key={habit.id} {...sort.itemProps(habit.id)} className="rounded-3xl border border-line bg-card p-4">
               <button type="button" className="w-full text-left" onClick={() => setOpenId(openId === habit.id ? null : habit.id)}>
                 <h3 className="text-lg">{habit.title}</h3>
                 <p className="mt-1 text-xs text-muted">
@@ -191,6 +179,7 @@ export function HabitsPage() {
           )
         })}
       </ul>
+      <SortGhostCard />
     </div>
   )
 }

@@ -9,6 +9,34 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
+        <service
+            android:name=".HudPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <receiver
+            android:name=".HudReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.dualslot.mobile.ack" />
+                <action android:name="app.dualslot.mobile.pauseTimer" />
+                <action android:name="app.dualslot.mobile.resumeTimer" />
+                <action android:name="app.dualslot.mobile.stopTimer" />
+                <action android:name="app.dualslot.mobile.play" />
+                <action android:name="app.dualslot.mobile.pause" />
+                <action android:name="app.dualslot.mobile.next" />
+                <action android:name="app.dualslot.mobile.prev" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="androidx.media.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
@@ -35,7 +63,9 @@
         </provider>
     </application>
 
-    <!-- Permissions -->
-
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 </manifest>

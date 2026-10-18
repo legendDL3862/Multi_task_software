@@ -6,6 +6,7 @@ export type TimerMode = 'countup' | 'countdown'
 export type Slot = 'primary' | 'secondary' | 'other' | 'habit'
 export type MusicSource = NoiseType | 'folder'
 export type AlarmType = 'off' | 'chime' | 'bell' | 'wood'
+export type PlayMode = 'sequence' | 'loop' | 'shuffle'
 
 export type Folder = {
   id: string
@@ -72,6 +73,17 @@ export type DailyLog = {
   updatedAt: number
 }
 
+export type TimerState = {
+  itemId: string
+  sessionId: string
+  slot: Slot
+  mode: TimerMode
+  plannedSeconds: number
+  elapsedSeconds: number
+  remainingSeconds: number
+  running: boolean
+} | null
+
 export type Settings = {
   id: 'settings'
   noiseType: MusicSource
@@ -86,6 +98,8 @@ export type Settings = {
   musicFolderPath: string
   alarmType: AlarmType
   alarmVolume: number
+  musicPlayMode: PlayMode
+  liveTimer: (Exclude<TimerState, null> & { savedAt: number }) | null
 }
 
 export type BackupPayload = {
@@ -99,17 +113,6 @@ export type BackupPayload = {
   habits?: Habit[]
   settings: Settings
 }
-
-export type TimerState = {
-  itemId: string
-  sessionId: string
-  slot: Slot
-  mode: TimerMode
-  plannedSeconds: number
-  elapsedSeconds: number
-  remainingSeconds: number
-  running: boolean
-} | null
 
 export type CompletionState = {
   itemId: string
