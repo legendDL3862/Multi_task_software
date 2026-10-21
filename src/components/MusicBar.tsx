@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useI18n } from '../hooks/useI18n'
 import { useMusic } from '../hooks/useMusic'
+import { listenHud, requestHudPermission, syncMusicHud } from '../lib/hud'
 import {
   ingestMusicFiles,
   pauseMusic,
@@ -85,6 +86,70 @@ export function MusicBar() {
   useEffect(() => {
     setPlayMode(settings.musicPlayMode)
   }, [settings.musicPlayMode])
+
+  useEffect(() => {
+    void requestHudPermission()
+    return listenHud((event) => {
+      if (event.type === 'musicPlay') void playMusic(settings.noiseType)
+      if (event.type === 'musicPause') pauseMusic()
+      if (event.type === 'musicPrev') void skipTrack(-1)
+      if (event.type === 'musicNext') void skipTrack(1)
+      if (event.type === 'musicBack') skipSeconds(-10)
+      if (event.type === 'musicFwd') skipSeconds(10)
+      if (event.type === 'musicMode') {
+        const i = PLAY_MODES.indexOf(settings.musicPlayMode)
+        const next = PLAY_MODES[(i + 1) % PLAY_MODES.length]
+        setPlayMode(next)
+        void patchSettings({ musicPlayMode: next })
+      }
+    })
+  }, [settings.noiseType, settings.musicPlayMode, patchSettings])
+
+  useEffect(() => {
+    const labels: Record<MusicSource, string> = {
+      off: t.noiseOff,
+      white: t.noiseWhite,
+      pink: t.noisePink,
+      brown: t.noiseBrown,
+      folder: t.noiseFolder,
+    }
+    const modeLabel =
+      settings.musicPlayMode === 'sequence'
+        ? t.playSequence
+        : settings.musicPlayMode === 'loop'
+          ? t.playLoop
+          : t.playShuffle
+    void syncMusicHud({
+      active: player.active,
+      title: player.trackName || labels[settings.noiseType] || t.nowPlaying,
+      artist:
+        settings.noiseType === 'folder' && player.count
+          ? `${player.index + 1}/${player.count} · ${clock(player.current)} / ${clock(player.duration)} · ${modeLabel}`
+          : labels[settings.noiseType],
+      playing: player.playing,
+      folder: settings.noiseType === 'folder',
+      current: player.current,
+      duration: player.duration,
+      playLabel: t.playMusic,
+      pauseLabel: t.pause,
+      prevLabel: t.prevTrack,
+      nextLabel: t.nextTrack,
+      backLabel: t.skipBack,
+      fwdLabel: t.skipFwd,
+      modeLabel,
+    })
+  }, [
+    player.active,
+    player.playing,
+    player.trackName,
+    player.index,
+    player.count,
+    Math.floor(player.current),
+    Math.floor(player.duration),
+    settings.noiseType,
+    settings.musicPlayMode,
+    t,
+  ])
 
   const labels: Record<MusicSource, string> = {
     off: t.noiseOff,

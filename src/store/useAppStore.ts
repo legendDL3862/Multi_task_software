@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { startAlarmLoop, stopAlarmLoop } from '../audio/noise'
 import { setMusicDuck } from '../lib/music'
+import { readHudSnapshot } from '../lib/hud'
 import { db } from '../db'
 import { uid } from '../lib/id'
 import { todayKey } from '../lib/time'
@@ -72,6 +73,7 @@ type State = {
   tickTimer: () => Promise<void>
   expireTimer: () => Promise<void>
   persistTimer: () => Promise<void>
+  catchUpTimer: () => Promise<void>
   stopTimer: () => Promise<void>
   ackCompletion: () => void
   patchSettings: (patch: Partial<Settings>) => Promise<void>
@@ -451,6 +453,7 @@ export const useAppStore = create<State>((set, get) => ({
   },
 
   pauseTimer: async () => {
+    await get().catchUpTimer()
     const timer = get().timer
     if (!timer) return
     const next = { ...timer, running: false }
@@ -468,6 +471,31 @@ export const useAppStore = create<State>((set, get) => ({
 
   persistTimer: async () => {
     await persistLive(get, get().timer)
+  },
+
+  catchUpTimer: async () => {
+    const timer = get().timer
+    if (!timer) return
+    const hud = await readHudSnapshot()
+    let elapsed = timer.elapsedSeconds
+    let remaining = timer.remainingSeconds
+    let running = timer.running
+    if (hud) {
+      elapsed = Math.max(0, hud.elapsed)
+      remaining = timer.mode === 'countdown' ? Math.max(0, hud.remaining) : timer.remainingSeconds
+      running = hud.running
+    } else if (timer.running) {
+      const savedAt = get().settings.liveTimer?.savedAt
+      const dt = savedAt ? Math.max(0, Math.floor((Date.now() - savedAt) / 1000)) : 0
+      if (dt <= 0) return
+      elapsed = timer.elapsedSeconds + dt
+      remaining = timer.mode === 'countdown' ? Math.max(0, timer.remainingSeconds - dt) : timer.remainingSeconds
+    } else {
+      return
+    }
+    const next = { ...timer, elapsedSeconds: elapsed, remainingSeconds: remaining, running }
+    set({ timer: next })
+    await persistLive(get, next)
   },
 
   tickTimer: async () => {
@@ -493,10 +521,15 @@ export const useAppStore = create<State>((set, get) => ({
   expireTimer: async () => {
     const timer = get().timer
     if (!timer || get().completion) return
-    const habit = get().habits.find((h) => h.id === timer.itemId)
-    const item = get().items.find((i) => i.id === timer.itemId)
-    const title = habit?.title ?? item?.title ?? ''
-    set({ completion: { itemId: timer.itemId, title } })
+    const hud = await readHudSnapshot()
+    const elapsed = hud?.elapsed ?? Math.max(timer.elapsedSeconds, timer.plannedSeconds)
+    set({
+      timer: { ...timer, elapsedSeconds: elapsed, remainingSeconds: 0, running: false },
+      completion: {
+        itemId: timer.itemId,
+        title: get().habits.find((h) => h.id === timer.itemId)?.title ?? get().items.find((i) => i.id === timer.itemId)?.title ?? '',
+      },
+    })
     await get().stopTimer()
     const settings = get().settings
     setMusicDuck(true)
@@ -504,6 +537,7 @@ export const useAppStore = create<State>((set, get) => ({
   },
 
   stopTimer: async () => {
+    if (!get().completion) await get().catchUpTimer()
     const timer = get().timer
     if (!timer) return
     const elapsed = timer.elapsedSeconds

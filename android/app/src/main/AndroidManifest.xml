@@ -10,7 +10,21 @@
         android:theme="@style/AppTheme">
 
         <service
+            android:name=".TimerHudService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Ongoing focus timer with lockscreen pause and stop" />
+        </service>
+
+        <service
             android:name=".HudPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <service
+            android:name=".MusicHudService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
@@ -22,18 +36,14 @@
                 <action android:name="app.dualslot.mobile.pauseTimer" />
                 <action android:name="app.dualslot.mobile.resumeTimer" />
                 <action android:name="app.dualslot.mobile.stopTimer" />
-                <action android:name="app.dualslot.mobile.play" />
-                <action android:name="app.dualslot.mobile.pause" />
-                <action android:name="app.dualslot.mobile.next" />
-                <action android:name="app.dualslot.mobile.prev" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
-            android:name="androidx.media.session.MediaButtonReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MEDIA_BUTTON" />
+                <action android:name="app.dualslot.mobile.timerDone" />
+                <action android:name="app.dualslot.mobile.musicPlay" />
+                <action android:name="app.dualslot.mobile.musicPause" />
+                <action android:name="app.dualslot.mobile.musicPrev" />
+                <action android:name="app.dualslot.mobile.musicNext" />
+                <action android:name="app.dualslot.mobile.musicBack" />
+                <action android:name="app.dualslot.mobile.musicFwd" />
+                <action android:name="app.dualslot.mobile.musicMode" />
             </intent-filter>
         </receiver>
 
@@ -66,6 +76,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 </manifest>

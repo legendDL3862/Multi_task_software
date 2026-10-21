@@ -7,15 +7,27 @@ export type HudEvent = {
     | 'pauseTimer'
     | 'resumeTimer'
     | 'stopTimer'
-    | 'play'
-    | 'pause'
-    | 'next'
-    | 'prev'
     | 'timerDone'
+    | 'musicPlay'
+    | 'musicPause'
+    | 'musicPrev'
+    | 'musicNext'
+    | 'musicBack'
+    | 'musicFwd'
+    | 'musicMode'
+}
+
+export type HudSnapshot = {
+  running: boolean
+  elapsed: number
+  remaining: number
+  mode?: string
+  title?: string
 }
 
 type HudPlugin = {
   requestPermission: () => Promise<{ display: string }>
+  snapshot: () => Promise<HudSnapshot | undefined>
   sync: (payload: {
     timer: {
       title: string
@@ -27,8 +39,24 @@ type HudPlugin = {
       resumeLabel: string
       stopLabel: string
     } | null
-    media: { title: string; playing: boolean; artist: string; canSkip: boolean } | null
-    complete: { title: string; body: string; confirmLabel: string } | null
+    media: null
+    complete: { title: string; body: string } | null
+  }) => Promise<void>
+  syncMedia: (payload: {
+    active: boolean
+    title: string
+    artist: string
+    playing: boolean
+    folder: boolean
+    current: number
+    duration: number
+    playLabel: string
+    pauseLabel: string
+    prevLabel: string
+    nextLabel: string
+    backLabel: string
+    fwdLabel: string
+    modeLabel: string
   }) => Promise<void>
   clear: () => Promise<void>
   addListener: (event: 'hud', cb: (event: HudEvent) => void) => Promise<PluginListenerHandle>
@@ -49,8 +77,37 @@ export async function requestHudPermission() {
   }
 }
 
-export async function syncHud(_payload?: Parameters<HudPlugin['sync']>[0]) {
-  await clearHud()
+export async function readHudSnapshot(): Promise<HudSnapshot | null> {
+  if (!hudAvailable()) return null
+  try {
+    const snap = await Hud.snapshot()
+    if (!snap || typeof snap.elapsed !== 'number') return null
+    return snap
+  } catch {
+    return null
+  }
+}
+
+export async function syncHud(payload: Parameters<HudPlugin['sync']>[0]) {
+  if (!hudAvailable()) return
+  try {
+    if (!payload.timer && !payload.complete) {
+      await Hud.clear()
+      return
+    }
+    await Hud.sync(payload)
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function syncMusicHud(payload: Parameters<HudPlugin['syncMedia']>[0]) {
+  if (!hudAvailable()) return
+  try {
+    await Hud.syncMedia(payload)
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function clearHud() {

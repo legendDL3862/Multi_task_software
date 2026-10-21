@@ -6,7 +6,6 @@ import { FocusPage } from './pages/Focus'
 import { HabitsPage } from './pages/Habits'
 import { LotPage } from './pages/Lot'
 import { StatsPage } from './pages/Stats'
-import { clearHud } from './lib/hud'
 import { useAppStore } from './store/useAppStore'
 
 export default function App() {
@@ -15,7 +14,6 @@ export default function App() {
 
   useEffect(() => {
     void hydrate()
-    void clearHud()
   }, [hydrate])
 
   if (!ready) {

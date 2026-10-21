@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useI18n } from '../hooks/useI18n'
+import { listenHud, requestHudPermission, syncHud } from '../lib/hud'
 import { useAppStore } from '../store/useAppStore'
 import { MusicBar } from './MusicBar'
 import { Toast } from './Toast'
@@ -12,6 +13,14 @@ export function Shell() {
   const scene = useAppStore((s) => s.settings.scene)
   const tickTimer = useAppStore((s) => s.tickTimer)
   const persistTimer = useAppStore((s) => s.persistTimer)
+  const catchUpTimer = useAppStore((s) => s.catchUpTimer)
+  const pauseTimer = useAppStore((s) => s.pauseTimer)
+  const resumeTimer = useAppStore((s) => s.resumeTimer)
+  const stopTimer = useAppStore((s) => s.stopTimer)
+  const expireTimer = useAppStore((s) => s.expireTimer)
+  const timer = useAppStore((s) => s.timer)
+  const completion = useAppStore((s) => s.completion)
+  const locale = useAppStore((s) => s.settings.locale)
   const location = useLocation()
   const navigate = useNavigate()
   const start = useRef<{ x: number; y: number } | null>(null)
@@ -30,18 +39,67 @@ export function Shell() {
 
   useEffect(() => {
     const persist = () => void persistTimer()
-    const onHide = () => {
+    const onVis = () => {
       if (document.visibilityState === 'hidden') persist()
+      else {
+        void catchUpTimer().then(() => {
+          const live = useAppStore.getState().timer
+          if (live?.mode === 'countdown' && live.remainingSeconds <= 0) void expireTimer()
+        })
+      }
     }
     window.addEventListener('pagehide', persist)
     window.addEventListener('freeze', persist)
-    document.addEventListener('visibilitychange', onHide)
+    document.addEventListener('visibilitychange', onVis)
     return () => {
       window.removeEventListener('pagehide', persist)
       window.removeEventListener('freeze', persist)
-      document.removeEventListener('visibilitychange', onHide)
+      document.removeEventListener('visibilitychange', onVis)
     }
-  }, [persistTimer])
+  }, [persistTimer, catchUpTimer, expireTimer])
+
+  useEffect(() => {
+    void requestHudPermission()
+    return listenHud((event) => {
+      if (event.type === 'pauseTimer') void pauseTimer()
+      if (event.type === 'resumeTimer') resumeTimer()
+      if (event.type === 'stopTimer') void stopTimer()
+      if (event.type === 'timerDone') void expireTimer()
+    })
+  }, [pauseTimer, resumeTimer, stopTimer, expireTimer])
+
+  useEffect(() => {
+    const title =
+      (timer && (useAppStore.getState().habits.find((h) => h.id === timer.itemId)?.title
+        || useAppStore.getState().items.find((i) => i.id === timer.itemId)?.title)) || t.app
+    void syncHud({
+      timer: timer
+        ? {
+            title,
+            mode: timer.mode,
+            remaining: timer.remainingSeconds,
+            elapsed: timer.elapsedSeconds,
+            running: timer.running,
+            pauseLabel: t.pause,
+            resumeLabel: t.resume,
+            stopLabel: t.stop,
+          }
+        : null,
+      media: null,
+      complete: completion ? { title: completion.title, body: t.timerEnded } : null,
+    })
+  }, [
+    timer?.sessionId,
+    timer?.running,
+    timer?.mode,
+    completion?.itemId,
+    locale,
+    t.app,
+    t.pause,
+    t.resume,
+    t.stop,
+    t.timerEnded,
+  ])
 
   function onTouchStart(e: React.TouchEvent) {
     const el = e.target as HTMLElement

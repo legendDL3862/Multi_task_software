@@ -4,7 +4,6 @@ import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.content.Intent;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
@@ -28,16 +27,14 @@ import org.json.JSONObject;
 )
 public class HudPlugin extends Plugin {
   static HudPlugin instance;
-  private static final String CH_TIMER = "timer";
   private static final String CH_DONE = "complete";
-  private static final int ID_TIMER = 11;
   private static final int ID_DONE = 13;
 
   @Override
   public void load() {
     instance = this;
     try {
-      NotificationManagerCompat.from(getContext()).cancelAll();
+      createDoneChannel();
       getContext().stopService(new Intent(getContext(), HudPlaybackService.class));
     } catch (Exception ignored) {}
   }
@@ -67,59 +64,68 @@ public class HudPlugin extends Plugin {
   }
 
   @PluginMethod
+  public void snapshot(PluginCall call) {
+    JSONObject snap = TimerHudService.snapshot();
+    if (snap == null) {
+      call.resolve();
+      return;
+    }
+    JSObject ret = new JSObject();
+    ret.put("running", snap.optBoolean("running"));
+    ret.put("elapsed", snap.optInt("elapsed"));
+    ret.put("remaining", snap.optInt("remaining"));
+    ret.put("mode", snap.optString("mode"));
+    ret.put("title", snap.optString("title"));
+    call.resolve(ret);
+  }
+
+  @PluginMethod
+  public void syncMedia(PluginCall call) {
+    try {
+      JSONObject data = call.getData();
+      boolean active = data.optBoolean("active", false);
+      Intent intent = new Intent(getContext(), MusicHudService.class);
+      if (!active) {
+        getContext().stopService(intent);
+      } else {
+        intent.setAction(MusicHudService.ACTION_SYNC);
+        intent.putExtra("payload", data.toString());
+        if (MusicHudService.runningService) getContext().startService(intent);
+        else ContextCompat.startForegroundService(getContext(), intent);
+      }
+    } catch (Exception ignored) {}
+    call.resolve();
+  }
+
+  @PluginMethod
   public void sync(PluginCall call) {
-    clear(call);
+    try {
+      JSONObject data = call.getData();
+      JSONObject timer = data.isNull("timer") ? null : data.optJSONObject("timer");
+      JSONObject complete = data.isNull("complete") ? null : data.optJSONObject("complete");
+      NotificationManagerCompat nm = NotificationManagerCompat.from(getContext());
+      if (complete != null) nm.notify(ID_DONE, doneNotification(complete));
+      else nm.cancel(ID_DONE);
+      if (timer == null) {
+        getContext().stopService(new Intent(getContext(), TimerHudService.class));
+      } else {
+        Intent intent = new Intent(getContext(), TimerHudService.class);
+        intent.setAction(TimerHudService.ACTION_SYNC);
+        intent.putExtra("payload", data.toString());
+        if (TimerHudService.runningService) getContext().startService(intent);
+        else ContextCompat.startForegroundService(getContext(), intent);
+      }
+    } catch (Exception ignored) {}
+    call.resolve();
   }
 
   @PluginMethod
   public void clear(PluginCall call) {
     try {
-      NotificationManagerCompat.from(getContext()).cancelAll();
-      stopPlayback();
+      getContext().stopService(new Intent(getContext(), TimerHudService.class));
+      NotificationManagerCompat.from(getContext()).cancel(ID_DONE);
     } catch (Exception ignored) {}
     call.resolve();
-  }
-
-  private void startPlayback(String payload) {
-    Intent intent = new Intent(getContext(), HudPlaybackService.class);
-    intent.setAction(HudPlaybackService.ACTION_SYNC);
-    intent.putExtra("payload", payload);
-    if (HudPlaybackService.running) getContext().startService(intent);
-    else ContextCompat.startForegroundService(getContext(), intent);
-  }
-
-  private void stopPlayback() {
-    try {
-      getContext().stopService(new Intent(getContext(), HudPlaybackService.class));
-    } catch (Exception ignored) {}
-  }
-
-  private Notification timerNotification(JSONObject timer) {
-    boolean running = timer.optBoolean("running");
-    boolean countdown = "countdown".equals(timer.optString("mode"));
-    NotificationCompat.Builder b = new NotificationCompat.Builder(getContext(), CH_TIMER)
-      .setSmallIcon(R.drawable.ic_stat_notify)
-      .setContentTitle(timer.optString("title", "Dual Slot"))
-      .setContentIntent(launch())
-      .setOngoing(true)
-      .setOnlyAlertOnce(true)
-      .setSilent(true)
-      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-      .setPriority(NotificationCompat.PRIORITY_DEFAULT);
-    if (countdown) {
-      b.setContentText(format(timer.optInt("remaining")))
-        .setUsesChronometer(running)
-        .setChronometerCountDown(true)
-        .setWhen(System.currentTimeMillis() + timer.optInt("remaining") * 1000L);
-    } else {
-      b.setContentText(format(timer.optInt("elapsed")))
-        .setUsesChronometer(running)
-        .setWhen(System.currentTimeMillis() - timer.optInt("elapsed") * 1000L);
-    }
-    if (running) b.addAction(0, timer.optString("pauseLabel", "Pause"), button("pauseTimer"));
-    else b.addAction(0, timer.optString("resumeLabel", "Resume"), button("resumeTimer"));
-    b.addAction(0, timer.optString("stopLabel", "Stop"), button("stopTimer"));
-    return b.build();
   }
 
   private Notification doneNotification(JSONObject complete) {
@@ -131,50 +137,28 @@ public class HudPlugin extends Plugin {
       .setAutoCancel(true)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
       .setPriority(NotificationCompat.PRIORITY_HIGH)
-      .addAction(0, complete.optString("confirmLabel", "OK"), button("ack"))
       .build();
   }
 
-  private PendingIntent launch() {
+  private android.app.PendingIntent launch() {
     Intent intent = getContext().getPackageManager().getLaunchIntentForPackage(getContext().getPackageName());
     if (intent == null) intent = new Intent(getContext(), MainActivity.class);
     intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-    return PendingIntent.getActivity(
+    return android.app.PendingIntent.getActivity(
       getContext(),
       1,
       intent,
-      PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+      android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT
     );
   }
 
-  private PendingIntent button(String type) {
-    Intent intent = new Intent(getContext(), HudReceiver.class);
-    intent.setAction("app.dualslot.mobile." + type);
-    return PendingIntent.getBroadcast(
-      getContext(),
-      type.hashCode(),
-      intent,
-      PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
-    );
-  }
-
-  private void createChannels() {
+  private void createDoneChannel() {
     if (Build.VERSION.SDK_INT < 26) return;
     NotificationManager nm = getContext().getSystemService(NotificationManager.class);
     if (nm == null) return;
-    NotificationChannel timer = new NotificationChannel(CH_TIMER, "Timer", NotificationManager.IMPORTANCE_DEFAULT);
-    timer.setSound(null, null);
-    timer.enableVibration(false);
-    timer.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-    nm.createNotificationChannel(timer);
     NotificationChannel done = new NotificationChannel(CH_DONE, "Complete", NotificationManager.IMPORTANCE_HIGH);
     done.enableVibration(true);
     done.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
     nm.createNotificationChannel(done);
-  }
-
-  private String format(int seconds) {
-    int s = Math.max(0, seconds);
-    return (s / 60) + ":" + String.format("%02d", s % 60);
   }
 }
